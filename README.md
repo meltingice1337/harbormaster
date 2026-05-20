@@ -8,7 +8,6 @@
 
 Watchtower auto-updates. Harbormaster checks, fetches the changelog, taps you on the shoulder, and only updates after you say yes — from Telegram or a sleek web dashboard.
 
-[![CI](https://github.com/meltingice1337/harbormaster/actions/workflows/ci.yaml/badge.svg)](https://github.com/meltingice1337/harbormaster/actions/workflows/ci.yaml)
 [![Release](https://github.com/meltingice1337/harbormaster/actions/workflows/release.yaml/badge.svg)](https://github.com/meltingice1337/harbormaster/actions/workflows/release.yaml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![ghcr.io](https://img.shields.io/badge/ghcr.io-meltingice1337%2Fharbormaster-blue?logo=docker)](https://github.com/users/meltingice1337/packages/container/package/harbormaster)
