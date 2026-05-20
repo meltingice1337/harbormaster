@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.github
+data
+README.md
+.env*
+*.log
+.vscode
+.idea
+coverage
+out
+build
+*.tsbuildinfo

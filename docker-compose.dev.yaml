@@ -1,0 +1,22 @@
+# Local dev compose — builds the image and runs against the live docker socket.
+# Usage: docker compose -f docker-compose.dev.yaml up --build
+
+services:
+  harbormaster:
+    build: .
+    container_name: harbormaster-dev
+    environment:
+      - TZ=Europe/Bucharest
+      - HM_WATCH=homeassistant,jellyfin,sonarr,prowlarr,dockflare,homepage
+      # Set these to test the bot side; leave empty to run web-only.
+      - HM_TELEGRAM_BOT_TOKEN=
+      - HM_TELEGRAM_CHAT_IDS=
+      - HM_GITHUB_TOKEN=
+      - HM_WEB_AUTH_TOKEN=
+      - LOG_LEVEL=debug
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/data
+    ports:
+      - "9099:8000"
+    restart: unless-stopped
