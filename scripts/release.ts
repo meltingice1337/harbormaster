@@ -1,10 +1,13 @@
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { stdin, stdout } from "node:process";
+import { createInterface, type Interface } from "node:readline/promises";
 
 type Bump = "patch" | "minor" | "major";
 
 const PKG_PATH = resolve(process.cwd(), "package.json");
+const BAR = "─".repeat(60);
 
 function sh(cmd: string): string {
   return execSync(cmd, { encoding: "utf8" }).trim();
@@ -18,14 +21,6 @@ function bumpVersion(current: string, kind: Bump): string {
   if (kind === "major") return `${maj + 1}.0.0`;
   if (kind === "minor") return `${maj}.${min + 1}.0`;
   return `${maj}.${min}.${pat + 1}`;
-}
-
-function resolveNextVersion(current: string, arg: string): string {
-  if (arg === "patch" || arg === "minor" || arg === "major") {
-    return bumpVersion(current, arg);
-  }
-  if (/^\d+\.\d+\.\d+$/.test(arg)) return arg;
-  throw new Error(`expected patch|minor|major or X.Y.Z, got: ${arg}`);
 }
 
 function lastTag(): string | null {
@@ -42,7 +37,6 @@ function commitsSince(tag: string | null): string {
   if (!log) return "";
   const lines = log.split("\n").filter((l) => {
     const subject = l.split("\t")[1] ?? "";
-    // skip our own release-bump commits
     return !/^chore\(release\):/i.test(subject);
   });
   return lines
@@ -56,9 +50,7 @@ function commitsSince(tag: string | null): string {
 function ensureCleanTree() {
   const status = sh("git status --porcelain");
   if (status) {
-    throw new Error(
-      `working tree not clean — commit or stash first:\n${status}`,
-    );
+    throw new Error(`working tree not clean — commit or stash first:\n${status}`);
   }
 }
 
@@ -69,52 +61,98 @@ function ensureOnMain() {
   }
 }
 
-async function main() {
-  const arg = process.argv[2];
-  const shouldPush = process.argv.includes("--push");
-  if (!arg) {
-    console.error("usage: yarn release <patch|minor|major|X.Y.Z> [--push]");
-    process.exit(1);
-  }
+async function pickVersion(rl: Interface, current: string): Promise<string> {
+  const patch = bumpVersion(current, "patch");
+  const minor = bumpVersion(current, "minor");
+  const major = bumpVersion(current, "major");
 
+  console.log(`current version: ${current}\n`);
+  console.log("  1) patch   →  " + patch + "    (bug fixes)");
+  console.log("  2) minor   →  " + minor + "    (new features, backwards compatible)");
+  console.log("  3) major   →  " + major + "    (breaking changes)");
+  console.log("  4) custom  →  enter your own X.Y.Z\n");
+
+  while (true) {
+    const ans = (await rl.question("choose [1-4]: ")).trim();
+    if (ans === "1" || ans.toLowerCase() === "patch") return patch;
+    if (ans === "2" || ans.toLowerCase() === "minor") return minor;
+    if (ans === "3" || ans.toLowerCase() === "major") return major;
+    if (ans === "4" || ans.toLowerCase() === "custom") {
+      const custom = (await rl.question("enter version (X.Y.Z): ")).trim();
+      if (/^\d+\.\d+\.\d+$/.test(custom)) return custom;
+      console.log(`  ✗ "${custom}" is not a valid X.Y.Z — try again`);
+      continue;
+    }
+    console.log("  ✗ pick 1, 2, 3, or 4");
+  }
+}
+
+async function confirm(rl: Interface, question: string, defaultYes = true): Promise<boolean> {
+  const suffix = defaultYes ? "[Y/n]" : "[y/N]";
+  const ans = (await rl.question(`${question} ${suffix} `)).trim().toLowerCase();
+  if (!ans) return defaultYes;
+  return ans === "y" || ans === "yes";
+}
+
+async function main() {
   ensureOnMain();
   ensureCleanTree();
 
   const pkg = JSON.parse(readFileSync(PKG_PATH, "utf8")) as { version: string };
-  const next = resolveNextVersion(pkg.version, arg);
-  const tag = `v${next}`;
-
   const prev = lastTag();
   const changelog = commitsSince(prev);
   if (!changelog) {
     throw new Error(`no commits since ${prev ?? "repo start"} — nothing to release`);
   }
 
-  const tagMessage = [
-    `Release ${tag}`,
-    "",
-    prev ? `Changes since ${prev}:` : "Initial release:",
-    "",
-    changelog,
-  ].join("\n");
+  if (!stdin.isTTY) {
+    throw new Error("release script requires an interactive terminal");
+  }
+  const rl = createInterface({ input: stdin, output: stdout });
 
-  console.log(`bumping ${pkg.version} -> ${next}`);
-  console.log(`\n--- tag annotation ---\n${tagMessage}\n----------------------\n`);
+  try {
+    console.log(`\n${BAR}\n  Harbormaster release\n${BAR}`);
 
-  pkg.version = next;
-  writeFileSync(PKG_PATH, `${JSON.stringify(pkg, null, 2)}\n`);
+    const next = await pickVersion(rl, pkg.version);
+    const tag = `v${next}`;
 
-  sh("git add package.json");
-  sh(`git commit -m "chore(release): ${tag}"`);
-  execSync(`git tag -a ${tag} -F -`, { input: tagMessage });
+    const tagMessage = [
+      `Release ${tag}`,
+      "",
+      prev ? `Changes since ${prev}:` : "Initial release:",
+      "",
+      changelog,
+    ].join("\n");
 
-  console.log(`created commit + tag ${tag}`);
+    console.log(`\n${BAR}\n  Plan\n${BAR}`);
+    console.log(`  package.json : ${pkg.version}  →  ${next}`);
+    console.log(`  git tag      : ${tag}`);
+    console.log(`  since        : ${prev ?? "(initial release)"}`);
+    console.log(`  branch       : main`);
+    console.log(BAR);
+    console.log(tagMessage);
+    console.log(`${BAR}\n`);
 
-  if (shouldPush) {
-    sh("git push --follow-tags");
-    console.log(`pushed main + ${tag}`);
-  } else {
-    console.log(`\nnext: git push --follow-tags`);
+    if (!(await confirm(rl, "Update package.json + create commit + tag?"))) {
+      console.log("aborted — no changes made");
+      return;
+    }
+
+    pkg.version = next;
+    writeFileSync(PKG_PATH, `${JSON.stringify(pkg, null, 2)}\n`);
+    sh("git add package.json");
+    sh(`git commit -m "chore(release): ${tag}"`);
+    execSync(`git tag -a ${tag} -F -`, { input: tagMessage });
+    console.log(`\n✓ updated package.json, created commit + tag ${tag}`);
+
+    if (await confirm(rl, "Push to origin now?")) {
+      sh("git push --follow-tags");
+      console.log(`✓ pushed main + ${tag} — release workflow will build the image`);
+    } else {
+      console.log(`\nleft local. push when ready:  git push --follow-tags`);
+    }
+  } finally {
+    rl.close();
   }
 }
 
