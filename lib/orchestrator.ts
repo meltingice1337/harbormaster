@@ -9,11 +9,12 @@ import { pullAndRecreate } from "@/lib/docker/updater";
 import {
   isSkipped,
   loadState,
-  markChecked,
   markSkipped,
+  mutateState,
   recordEvent,
 } from "@/lib/state";
 import type {
+  ActivityEvent,
   DashboardState,
   PendingUpdate,
   WatchedContainer,
@@ -61,7 +62,28 @@ export async function scan(): Promise<ScanResult> {
     }),
   );
 
-  await markChecked();
+  const now = new Date().toISOString();
+  const pendingNames = new Set(pending.map((p) => p.container.name));
+  const detections: ActivityEvent[] = pending
+    .filter((p) => state.lastDetected[p.container.name] !== p.newDigest)
+    .map((p) => ({
+      timestamp: now,
+      type: "detected",
+      container: p.container.name,
+      fromVersion: p.container.currentVersion,
+      toVersion: p.newVersion,
+    }));
+
+  await mutateState((s) => {
+    s.lastCheckAt = now;
+    for (const p of pending) s.lastDetected[p.container.name] = p.newDigest;
+    for (const name of Object.keys(s.lastDetected)) {
+      // Drop entries for containers that are no longer pending so a future
+      // re-detection of the same version is announced again.
+      if (!pendingNames.has(name)) delete s.lastDetected[name];
+    }
+    for (const e of detections) s.activityLog.unshift(e);
+  });
   return { watched, pending };
 }
 

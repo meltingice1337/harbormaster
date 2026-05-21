@@ -12,6 +12,7 @@ const EMPTY_STATE: PersistedState = {
   skippedVersions: {},
   activityLog: [],
   lastCheckAt: null,
+  lastDetected: {},
 };
 
 let cache: PersistedState | null = null;
@@ -31,6 +32,7 @@ export async function loadState(): Promise<PersistedState> {
     if (parsed.schemaVersion !== 1) {
       throw new Error(`unknown state schema version: ${parsed.schemaVersion}`);
     }
+    parsed.lastDetected ??= {};
     cache = parsed;
     return parsed;
   } catch (err) {
@@ -57,8 +59,8 @@ export async function mutateState(
   mutator: (state: PersistedState) => void | Promise<void>,
 ): Promise<PersistedState> {
   // Serialize the entire read-modify-write so concurrent callers (e.g. recordEvent
-  // racing with markChecked from a dashboard poll) don't both clone the same
-  // pre-mutation snapshot and clobber each other's changes.
+  // from an apply racing with the scan() mutation from a dashboard poll) don't
+  // both clone the same pre-mutation snapshot and clobber each other's changes.
   const run = mutateChain.then(async () => {
     const current = await loadState();
     const draft: PersistedState = structuredClone(current);
@@ -87,12 +89,6 @@ export async function markSkipped(container: string, version: string): Promise<v
       container,
       toVersion: version,
     });
-  });
-}
-
-export async function markChecked(): Promise<void> {
-  await mutateState((s) => {
-    s.lastCheckAt = new Date().toISOString();
   });
 }
 

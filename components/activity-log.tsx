@@ -1,5 +1,6 @@
 import {
   ArrowUpCircle,
+  BellRing,
   Check,
   CircleX,
   History,
@@ -12,6 +13,7 @@ import type { ActivityEvent } from "@/lib/types";
 
 const iconFor = {
   check: ArrowUpCircle,
+  detected: BellRing,
   updated: Check,
   skipped: SkipForward,
   failed: CircleX,
@@ -19,6 +21,7 @@ const iconFor = {
 
 const toneFor = {
   check: "text-muted-foreground",
+  detected: "text-sky-400",
   updated: "text-emerald-400",
   skipped: "text-muted-foreground",
   failed: "text-red-400",
@@ -63,6 +66,8 @@ function describe(e: ActivityEvent): string {
   switch (e.type) {
     case "check":
       return "Scanned all containers";
+    case "detected":
+      return `Update available for ${e.container ?? "?"}${e.toVersion ? ` (${e.fromVersion ?? "?"} → ${e.toVersion})` : ""}`;
     case "updated":
       return `Updated ${e.container ?? "?"}${e.fromVersion ? ` (${e.fromVersion} → ${e.toVersion ?? "?"})` : ""}`;
     case "skipped":

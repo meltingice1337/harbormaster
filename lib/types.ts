@@ -30,7 +30,7 @@ export type PendingUpdate = {
 
 export type ActivityEvent = {
   timestamp: string;
-  type: "check" | "updated" | "skipped" | "failed";
+  type: "check" | "detected" | "updated" | "skipped" | "failed";
   container?: string;
   fromVersion?: string | null;
   toVersion?: string | null;
@@ -42,6 +42,9 @@ export type PersistedState = {
   skippedVersions: Record<string, string[]>;
   activityLog: ActivityEvent[];
   lastCheckAt: string | null;
+  // Digest of the most recent pending update we announced per container, so
+  // repeated scans of the same pending version don't re-log a detection event.
+  lastDetected: Record<string, string>;
 };
 
 export type DashboardState = {
