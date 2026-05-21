@@ -36,19 +36,19 @@ export async function scan(): Promise<ScanResult> {
       if (!remote) return;
       if (container.currentDigest && container.currentDigest === remote) return;
 
-      const newVersion = container.currentVersion;
-      const kind: PendingUpdate["kind"] = newVersion ? "version-bump" : "rebuild";
-
-      if (newVersion && isSkipped(state, container.name, newVersion)) {
-        logger.debug({ container: container.name, version: newVersion }, "orchestrator: skipped");
-        return;
-      }
-
       let changelog: PendingUpdate["changelog"] = [];
       try {
         changelog = await fetchChangelog(container.changelogSource, container.currentVersion);
       } catch (err) {
         logger.warn({ err, container: container.name }, "orchestrator: changelog fetch failed");
+      }
+
+      const newVersion = changelog[0]?.version ?? null;
+      const kind: PendingUpdate["kind"] = newVersion ? "version-bump" : "rebuild";
+
+      if (newVersion && isSkipped(state, container.name, newVersion)) {
+        logger.debug({ container: container.name, version: newVersion }, "orchestrator: skipped");
+        return;
       }
 
       pending.push({

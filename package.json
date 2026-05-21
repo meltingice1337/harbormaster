@@ -3,9 +3,9 @@
   "version": "0.1.1",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 9099",
+    "dev": "next dev -p 8008",
     "build": "next build",
-    "start": "next start -p 9099",
+    "start": "next start -p 8008",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "discover": "tsx scripts/discover.ts",
