@@ -15,7 +15,7 @@ const EMPTY_STATE: PersistedState = {
 };
 
 let cache: PersistedState | null = null;
-let writeChain: Promise<unknown> = Promise.resolve();
+let mutateChain: Promise<unknown> = Promise.resolve();
 
 function statePath(): string {
   return path.join(getConfig().STATE_DIR, "state.json");
@@ -45,29 +45,30 @@ export async function loadState(): Promise<PersistedState> {
 }
 
 async function persist(state: PersistedState): Promise<void> {
-  cache = state;
   const filePath = statePath();
   const tmp = `${filePath}.tmp`;
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(tmp, JSON.stringify(state, null, 2), "utf8");
   await fs.rename(tmp, filePath);
-}
-
-function enqueueWrite(state: PersistedState): Promise<void> {
-  const next = writeChain.then(() => persist(state));
-  writeChain = next.catch((err) => logger.error({ err }, "state: write failed"));
-  return next;
+  cache = state;
 }
 
 export async function mutateState(
   mutator: (state: PersistedState) => void | Promise<void>,
 ): Promise<PersistedState> {
-  const current = await loadState();
-  const draft: PersistedState = structuredClone(current);
-  await mutator(draft);
-  draft.activityLog = draft.activityLog.slice(0, ACTIVITY_CAP);
-  await enqueueWrite(draft);
-  return draft;
+  // Serialize the entire read-modify-write so concurrent callers (e.g. recordEvent
+  // racing with markChecked from a dashboard poll) don't both clone the same
+  // pre-mutation snapshot and clobber each other's changes.
+  const run = mutateChain.then(async () => {
+    const current = await loadState();
+    const draft: PersistedState = structuredClone(current);
+    await mutator(draft);
+    draft.activityLog = draft.activityLog.slice(0, ACTIVITY_CAP);
+    await persist(draft);
+    return draft;
+  });
+  mutateChain = run.catch((err) => logger.error({ err }, "state: mutation failed"));
+  return run;
 }
 
 export async function recordEvent(event: ActivityEvent): Promise<void> {
@@ -100,5 +101,5 @@ export function isSkipped(state: PersistedState, container: string, version: str
 }
 
 export async function flush(): Promise<void> {
-  await writeChain;
+  await mutateChain;
 }
