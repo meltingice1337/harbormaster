@@ -10,7 +10,13 @@ import type { DashboardState, PendingUpdate } from "@/lib/types";
 
 const POLL_INTERVAL_MS = 30_000;
 
-export function Dashboard({ initial }: { initial: DashboardState }) {
+export function Dashboard({
+  initial,
+  version,
+}: {
+  initial: DashboardState;
+  version: string;
+}) {
   const [state, setState] = useState(initial);
 
   const refresh = useCallback(async (fresh = false) => {
@@ -42,7 +48,7 @@ export function Dashboard({ initial }: { initial: DashboardState }) {
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-6xl mx-auto w-full">
-      <Header onRefresh={() => refresh(true)} />
+      <Header version={version} onRefresh={() => refresh(true)} />
       <StatsBar
         watched={state.watched.length}
         pending={state.pending.length}
