@@ -7,10 +7,11 @@ import {
   authToken,
   createSessionCookie,
 } from "@/lib/auth";
+import { withRateLimit } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
+async function login(req: Request): Promise<Response> {
   const expected = authToken();
   if (!expected) {
     return NextResponse.json({ ok: true, message: "auth disabled" });
@@ -32,6 +33,12 @@ export async function POST(req: Request) {
   });
   return NextResponse.json({ ok: true });
 }
+
+export const POST = withRateLimit(login, {
+  name: "auth",
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+});
 
 export async function DELETE() {
   const jar = await cookies();
