@@ -1,23 +1,20 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { ActivityLog } from "@/components/activity-log";
 import { ContainerCard } from "@/components/container-card";
 import { Header } from "@/components/header";
 import { StatsBar } from "@/components/stats-bar";
+import { Card } from "@/components/ui/card";
 import type { DashboardState, PendingUpdate } from "@/lib/types";
 
 const POLL_INTERVAL_MS = 30_000;
 
-export function Dashboard({
-  initial,
-  version,
-}: {
-  initial: DashboardState;
-  version: string;
-}) {
-  const [state, setState] = useState(initial);
+export function Dashboard({ version }: { version: string }) {
+  const [state, setState] = useState<DashboardState | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async (fresh = false) => {
     const res = await fetch(fresh ? "/api/scan" : "/api/state", {
@@ -30,12 +27,60 @@ export function Dashboard({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    refresh(false)
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh]);
+
+  useEffect(() => {
     const id = setInterval(() => {
       void refresh(false).catch(() => {});
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [refresh]);
 
+  return (
+    <div className="flex flex-col gap-6 p-6 max-w-6xl mx-auto w-full">
+      <Header version={version} onRefresh={() => refresh(true)} />
+      <StatsBar
+        watched={state?.watched.length ?? 0}
+        pending={state?.pending.length ?? 0}
+        lastCheckAt={state?.lastCheckAt ?? null}
+        nextCheckAt={state?.nextCheckAt ?? null}
+      />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 flex flex-col gap-3">
+          {state ? (
+            <ContainerList state={state} onRefresh={() => refresh(true)} />
+          ) : loading ? (
+            <ContainerSkeleton />
+          ) : (
+            <p className="text-sm text-muted-foreground italic">
+              Failed to load. Try refresh.
+            </p>
+          )}
+        </div>
+        <div className="lg:col-span-1">
+          <ActivityLog events={state?.activityLog ?? []} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContainerList({
+  state,
+  onRefresh,
+}: {
+  state: DashboardState;
+  onRefresh: () => Promise<void> | void;
+}) {
   const pendingByName = new Map<string, PendingUpdate>(
     state.pending.map((p) => [p.container.name, p]),
   );
@@ -46,36 +91,33 @@ export function Dashboard({
     return a.name.localeCompare(b.name);
   });
 
+  if (sorted.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground italic">
+        No containers under management. Set <code>HM_WATCH</code> or run docker.
+      </p>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-6xl mx-auto w-full">
-      <Header version={version} onRefresh={() => refresh(true)} />
-      <StatsBar
-        watched={state.watched.length}
-        pending={state.pending.length}
-        lastCheckAt={state.lastCheckAt}
-        nextCheckAt={state.nextCheckAt}
-      />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 flex flex-col gap-3">
-          {sorted.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              No containers under management. Set <code>HM_WATCH</code> or run docker.
-            </p>
-          ) : (
-            sorted.map((c) => (
-              <ContainerCard
-                key={c.name}
-                container={c}
-                pending={pendingByName.get(c.name)}
-                onActionDone={() => refresh(true)}
-              />
-            ))
-          )}
-        </div>
-        <div className="lg:col-span-1">
-          <ActivityLog events={state.activityLog} />
-        </div>
-      </div>
-    </div>
+    <>
+      {sorted.map((c) => (
+        <ContainerCard
+          key={c.name}
+          container={c}
+          pending={pendingByName.get(c.name)}
+          onActionDone={() => onRefresh()}
+        />
+      ))}
+    </>
+  );
+}
+
+function ContainerSkeleton() {
+  return (
+    <Card className="p-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      Scanning containers…
+    </Card>
   );
 }
