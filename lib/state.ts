@@ -13,17 +13,33 @@ const EMPTY_STATE: PersistedState = {
   activityLog: [],
   lastCheckAt: null,
   lastDetected: {},
+  lastUpdated: {},
 };
 
-let cache: PersistedState | null = null;
-let mutateChain: Promise<unknown> = Promise.resolve();
+// Pin cache + mutateChain to globalThis so Next.js module-duplication
+// (route bundle vs instrumentation bundle) doesn't give us two parallel
+// in-memory copies that each clobber the other's writes.
+type StateGlobals = {
+  cache: PersistedState | null;
+  mutateChain: Promise<unknown>;
+};
+const GLOBAL_KEY = "__harbormaster_state__";
+type GlobalScope = typeof globalThis & { [GLOBAL_KEY]?: StateGlobals };
+const g = globalThis as GlobalScope;
+function globals(): StateGlobals {
+  if (!g[GLOBAL_KEY]) {
+    g[GLOBAL_KEY] = { cache: null, mutateChain: Promise.resolve() };
+  }
+  return g[GLOBAL_KEY];
+}
 
 function statePath(): string {
   return path.join(getConfig().STATE_DIR, "state.json");
 }
 
 export async function loadState(): Promise<PersistedState> {
-  if (cache) return cache;
+  const gs = globals();
+  if (gs.cache) return gs.cache;
 
   const filePath = statePath();
   try {
@@ -33,13 +49,18 @@ export async function loadState(): Promise<PersistedState> {
       throw new Error(`unknown state schema version: ${parsed.schemaVersion}`);
     }
     parsed.lastDetected ??= {};
-    cache = parsed;
+    parsed.lastUpdated ??= {};
+    // One-time backfill so cards immediately show prior updates that pre-date
+    // the lastUpdated map. The activity log is walked oldest → newest so the
+    // most recent "updated" event wins per container.
+    backfillLastUpdated(parsed);
+    gs.cache = parsed;
     return parsed;
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     if (e.code === "ENOENT") {
-      cache = structuredClone(EMPTY_STATE);
-      return cache;
+      gs.cache = structuredClone(EMPTY_STATE);
+      return gs.cache;
     }
     logger.error({ err }, "state: failed to read");
     throw err;
@@ -52,7 +73,7 @@ async function persist(state: PersistedState): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(tmp, JSON.stringify(state, null, 2), "utf8");
   await fs.rename(tmp, filePath);
-  cache = state;
+  globals().cache = state;
 }
 
 export async function mutateState(
@@ -61,7 +82,8 @@ export async function mutateState(
   // Serialize the entire read-modify-write so concurrent callers (e.g. recordEvent
   // from an apply racing with the scan() mutation from a dashboard poll) don't
   // both clone the same pre-mutation snapshot and clobber each other's changes.
-  const run = mutateChain.then(async () => {
+  const gs = globals();
+  const run = gs.mutateChain.then(async () => {
     const current = await loadState();
     const draft: PersistedState = structuredClone(current);
     await mutator(draft);
@@ -69,7 +91,7 @@ export async function mutateState(
     await persist(draft);
     return draft;
   });
-  mutateChain = run.catch((err) => logger.error({ err }, "state: mutation failed"));
+  gs.mutateChain = run.catch((err) => logger.error({ err }, "state: mutation failed"));
   return run;
 }
 
@@ -97,5 +119,18 @@ export function isSkipped(state: PersistedState, container: string, version: str
 }
 
 export async function flush(): Promise<void> {
-  await mutateChain;
+  await globals().mutateChain;
+}
+
+function backfillLastUpdated(state: PersistedState): void {
+  // activityLog is newest-first; iterate from oldest so newer entries overwrite.
+  for (let i = state.activityLog.length - 1; i >= 0; i--) {
+    const e = state.activityLog[i];
+    if (e.type !== "updated" || !e.container) continue;
+    state.lastUpdated[e.container] = {
+      timestamp: e.timestamp,
+      fromVersion: e.fromVersion ?? null,
+      toVersion: e.toVersion ?? null,
+    };
+  }
 }

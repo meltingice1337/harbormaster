@@ -24,26 +24,36 @@ function Stat({
   accent?: boolean;
 }) {
   return (
-    <Card className="flex-1 p-4 flex items-center gap-3">
-      <Icon
-        className={`h-5 w-5 ${accent ? "text-amber-400" : "text-muted-foreground"}`}
-      />
-      <div className="flex flex-col">
-        <span className="text-xs text-muted-foreground uppercase tracking-wide">
+    <Card className="px-3 py-3 sm:px-4 sm:py-4 flex flex-col items-center justify-center gap-1 min-w-0 text-center">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <Icon
+          className={`h-3.5 w-3.5 shrink-0 ${
+            accent ? "text-amber-400" : ""
+          }`}
+        />
+        <span className="text-[10px] sm:text-xs uppercase tracking-wide">
           {label}
         </span>
-        <span className="text-lg font-medium leading-tight">{value}</span>
-        {subtle ? (
-          <span className="text-xs text-muted-foreground">{subtle}</span>
-        ) : null}
       </div>
+      <span
+        className={`text-xl sm:text-2xl font-semibold leading-none truncate w-full ${
+          accent ? "text-amber-400" : ""
+        }`}
+      >
+        {value}
+      </span>
+      {subtle ? (
+        <span className="text-[10px] sm:text-xs text-muted-foreground truncate w-full">
+          {subtle}
+        </span>
+      ) : null}
     </Card>
   );
 }
 
 export function StatsBar({ watched, pending, lastCheckAt, nextCheckAt }: Props) {
   return (
-    <div className="flex flex-col sm:flex-row gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
       <Stat icon={Anchor} label="Watched" value={String(watched)} />
       <Stat
         icon={ArrowUpCircle}

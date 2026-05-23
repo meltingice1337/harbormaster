@@ -42,7 +42,7 @@ export default function RootLayout({
     >
       <body
         suppressHydrationWarning
-        className="min-h-full flex flex-col bg-background text-foreground"
+        className="min-h-full flex flex-col items-center bg-background text-foreground"
       >
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           {children}

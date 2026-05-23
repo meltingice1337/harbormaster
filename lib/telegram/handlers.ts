@@ -2,8 +2,9 @@ import type { Context, Telegraf } from "telegraf";
 import type { InlineKeyboardButton } from "telegraf/types";
 
 import { logger } from "@/lib/log";
-import { apply, buildDashboardState, scan, skip } from "@/lib/orchestrator";
+import { buildDashboardState, enqueueApply, scan, skip } from "@/lib/orchestrator";
 import { adminChatId, isAllowedChat } from "@/lib/telegram/allowlist";
+import { trackJobMessage } from "@/lib/telegram/job-tracker";
 import {
   helpMessage,
   listMessage,
@@ -70,10 +71,22 @@ export function registerHandlers(bot: Bot) {
     if (!action || !name) return ctx.answerCbQuery();
 
     if (action === "apply") {
-      await ctx.answerCbQuery("Updating…");
+      await ctx.answerCbQuery("Queued");
+      const chatId = ctx.chat?.id;
+      const messageId =
+        ctx.callbackQuery && "message" in ctx.callbackQuery
+          ? ctx.callbackQuery.message?.message_id
+          : undefined;
       try {
-        await apply(name);
-        await ctx.editMessageText(`✅ Updated ${mdEscape(name)} → ${mdEscape(version ?? "?")}`, MD_OPTS);
+        const job = enqueueApply(name);
+        if (chatId !== undefined && messageId !== undefined) {
+          trackJobMessage(job.id, {
+            chatId,
+            messageId,
+            headline: `*${mdEscape(name)}*\n→ ${mdEscape(version ?? "?")}`,
+            target: version ?? "?",
+          });
+        }
       } catch (err) {
         await ctx.editMessageText(
           `❌ Failed ${mdEscape(name)}: ${mdEscape(err instanceof Error ? err.message : String(err))}`,

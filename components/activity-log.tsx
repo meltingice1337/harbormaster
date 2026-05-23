@@ -4,6 +4,7 @@ import {
   Check,
   CircleX,
   History,
+  Inbox,
   SkipForward,
 } from "lucide-react";
 
@@ -33,18 +34,32 @@ export function ActivityLog({ events }: { events: ActivityEvent[] }) {
       <CardHeader className="pb-2 flex flex-row items-center gap-2">
         <History className="h-4 w-4 text-muted-foreground" />
         <h2 className="font-medium">Recent activity</h2>
+        {events.length > 0 ? (
+          <span className="ml-auto text-xs text-muted-foreground font-mono">
+            {events.length}
+          </span>
+        ) : null}
       </CardHeader>
       <CardContent>
         {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">Nothing yet.</p>
+          <div className="flex flex-col items-center justify-center gap-2 py-6 text-muted-foreground">
+            <Inbox className="h-6 w-6 opacity-60" />
+            <p className="text-sm italic">Nothing yet.</p>
+          </div>
         ) : (
-          <div className="max-h-[420px] overflow-y-auto pr-2">
-            <ul className="flex flex-col gap-2 text-sm">
+          <div className="max-h-[420px] overflow-y-auto pr-1">
+            <ul className="flex flex-col">
               {events.map((e, idx) => {
                 const Icon = iconFor[e.type] ?? History;
+                const isLast = idx === events.length - 1;
                 return (
-                  <li key={idx} className="flex items-start gap-2">
-                    <Icon className={`h-4 w-4 mt-0.5 ${toneFor[e.type]}`} />
+                  <li
+                    key={idx}
+                    className={`flex items-start gap-2 py-2 text-sm ${
+                      isLast ? "" : "border-b border-foreground/5"
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${toneFor[e.type]}`} />
                     <div className="flex-1 min-w-0">
                       <p className="leading-snug">{describe(e)}</p>
                       <p className="text-xs text-muted-foreground">

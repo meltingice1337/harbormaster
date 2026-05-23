@@ -11,6 +11,9 @@ export type WatchedContainer = {
   sourceRepo: string | null;
   changelogSource: ChangelogSource;
   status: "running" | "exited" | "missing";
+  lastUpdatedAt: string | null;
+  lastUpdatedFrom: string | null;
+  lastUpdatedTo: string | null;
 };
 
 export type ChangelogEntry = {
@@ -37,6 +40,12 @@ export type ActivityEvent = {
   error?: string;
 };
 
+export type LastUpdateRecord = {
+  timestamp: string;
+  fromVersion: string | null;
+  toVersion: string | null;
+};
+
 export type PersistedState = {
   schemaVersion: 1;
   skippedVersions: Record<string, string[]>;
@@ -45,6 +54,9 @@ export type PersistedState = {
   // Digest of the most recent pending update we announced per container, so
   // repeated scans of the same pending version don't re-log a detection event.
   lastDetected: Record<string, string>;
+  // Per-container record of the last successful apply() — first-class so the
+  // UI can show "last updated" even if the activity log is trimmed or lost.
+  lastUpdated: Record<string, LastUpdateRecord>;
 };
 
 export type DashboardState = {
@@ -54,4 +66,22 @@ export type DashboardState = {
   nextCheckAt: string | null;
   schedule: string;
   activityLog: ActivityEvent[];
+};
+
+export type JobPhase =
+  | "queued"
+  | "pulling"
+  | "recreating"
+  | "starting"
+  | "done"
+  | "failed";
+
+export type Job = {
+  id: string;
+  container: string;
+  phase: JobPhase;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
 };

@@ -3,6 +3,10 @@ import { Telegraf } from "telegraf";
 import { getConfig } from "@/lib/config";
 import { logger } from "@/lib/log";
 import { registerHandlers } from "@/lib/telegram/handlers";
+import {
+  startJobMessageBridge,
+  stopJobMessageBridge,
+} from "@/lib/telegram/job-tracker";
 import type { PendingUpdate } from "@/lib/types";
 import { mdEscape, pendingMessage } from "@/lib/telegram/messages";
 
@@ -22,6 +26,7 @@ export async function startTelegramBot(): Promise<void> {
 
   bot = new Telegraf(config.HM_TELEGRAM_BOT_TOKEN!);
   registerHandlers(bot);
+  startJobMessageBridge(bot);
 
   try {
     await bot.telegram.setMyCommands([
@@ -48,6 +53,7 @@ export async function startTelegramBot(): Promise<void> {
 export async function stopTelegramBot(signal: NodeJS.Signals): Promise<void> {
   if (!bot) return;
   logger.info({ signal }, "telegram: stopping");
+  stopJobMessageBridge();
   bot.stop(signal);
   if (launchPromise) {
     try {

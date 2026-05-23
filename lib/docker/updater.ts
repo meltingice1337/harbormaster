@@ -3,6 +3,7 @@ import type { ContainerCreateOptions, ContainerInspectInfo } from "dockerode";
 
 import { dockerClient } from "@/lib/docker/client";
 import { logger } from "@/lib/log";
+import type { JobPhase } from "@/lib/types";
 
 const STOP_TIMEOUT_SECONDS = 30;
 
@@ -12,19 +13,26 @@ export type UpdateResult = {
   newDigest: string | null;
 };
 
-export async function pullAndRecreate(name: string): Promise<UpdateResult> {
+export type PhaseReporter = (phase: JobPhase) => void;
+
+export async function pullAndRecreate(
+  name: string,
+  onPhase?: PhaseReporter,
+): Promise<UpdateResult> {
   const docker = dockerClient();
   const existing = docker.getContainer(name);
   const inspect = await existing.inspect();
   const image = inspect.Config.Image;
   if (!image) throw new Error(`container ${name} has no image`);
 
+  onPhase?.("pulling");
   logger.info({ name, image }, "updater: pulling image");
   await pullImage(docker, image);
 
   const newImage = await docker.getImage(image).inspect();
   const newDigest = newImage.RepoDigests?.[0] ?? newImage.Id ?? null;
 
+  onPhase?.("recreating");
   logger.info({ name }, "updater: stopping container");
   await stopIfRunning(existing);
 
@@ -35,6 +43,7 @@ export async function pullAndRecreate(name: string): Promise<UpdateResult> {
   logger.info({ name }, "updater: creating new container");
   const created = await docker.createContainer(createOptions);
 
+  onPhase?.("starting");
   logger.info({ name }, "updater: starting new container");
   await created.start();
 

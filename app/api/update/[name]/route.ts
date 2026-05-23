@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { logger } from "@/lib/log";
-import { apply } from "@/lib/orchestrator";
+import { enqueueApply } from "@/lib/orchestrator";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +11,11 @@ export async function POST(
 ) {
   const { name } = await ctx.params;
   try {
-    await apply(name);
-    return NextResponse.json({ ok: true, container: name });
+    const job = enqueueApply(name);
+    return NextResponse.json(
+      { ok: true, jobId: job.id, container: name, phase: job.phase },
+      { status: 202 },
+    );
   } catch (err) {
     logger.error({ err, name }, "api/update failed");
     return NextResponse.json(

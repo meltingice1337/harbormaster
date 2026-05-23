@@ -73,6 +73,9 @@ async function inspectAsWatched(
     sourceRepo,
     changelogSource,
     status: inspect.State?.Running ? "running" : "exited",
+    lastUpdatedAt: null,
+    lastUpdatedFrom: null,
+    lastUpdatedTo: null,
   };
 }
 
@@ -110,6 +113,9 @@ function missingContainer(name: string): WatchedContainer {
     sourceRepo: null,
     changelogSource: { type: "none" },
     status: "missing",
+    lastUpdatedAt: null,
+    lastUpdatedFrom: null,
+    lastUpdatedTo: null,
   };
 }
 

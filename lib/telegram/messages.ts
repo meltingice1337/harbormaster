@@ -1,6 +1,6 @@
 import { getConfig } from "@/lib/config";
 import { formatStamp } from "@/lib/format";
-import type { DashboardState, PendingUpdate } from "@/lib/types";
+import type { DashboardState, Job, PendingUpdate } from "@/lib/types";
 
 const TELEGRAM_LIMIT = 4096;
 
@@ -63,6 +63,27 @@ export function helpMessage(): string {
       "/help — this message",
     ].join("\n"),
   );
+}
+
+export function jobStatusMessage(
+  job: Job,
+  context: { headline: string; target: string },
+): string {
+  const headline = context.headline;
+  switch (job.phase) {
+    case "queued":
+      return clip(`${headline}\n\n⏳ Queued…`);
+    case "pulling":
+      return clip(`${headline}\n\n📥 Pulling image…`);
+    case "recreating":
+      return clip(`${headline}\n\n🔄 Recreating container…`);
+    case "starting":
+      return clip(`${headline}\n\n▶️ Starting…`);
+    case "done":
+      return clip(`${headline}\n\n✅ Updated → ${mdEscape(context.target)}`);
+    case "failed":
+      return clip(`${headline}\n\n❌ Failed: ${mdEscape(job.error ?? "unknown error")}`);
+  }
 }
 
 export function unauthorizedAdminMessage(

@@ -16,22 +16,28 @@ export function Header({
 }) {
   const [pending, startTransition] = useTransition();
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-3 min-w-0">
         <Image
           src="/logo.png"
           alt="Harbormaster"
-          width={48}
-          height={48}
+          width={40}
+          height={40}
           priority
-          className="rounded-md"
+          className="rounded-md sm:w-12 sm:h-12 shrink-0"
         />
-        <div>
-          <div className="flex items-baseline gap-2">
-            <h1 className="text-2xl font-semibold leading-tight">Harbormaster</h1>
-            <span className="text-xs font-mono text-muted-foreground">v{version}</span>
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-semibold leading-tight">
+              Harbormaster
+            </h1>
+            <span className="text-xs font-mono text-muted-foreground">
+              v{version}
+            </span>
           </div>
-          <p className="text-xs text-muted-foreground">Container update manager</p>
+          <p className="text-xs text-muted-foreground hidden sm:block">
+            Container update manager
+          </p>
         </div>
       </div>
       <Button
@@ -50,9 +56,10 @@ export function Header({
             }
           });
         }}
+        aria-label="Check now"
       >
         <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} />
-        Check now
+        <span className="hidden sm:inline">Check now</span>
       </Button>
     </div>
   );

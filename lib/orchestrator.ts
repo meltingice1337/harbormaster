@@ -5,16 +5,17 @@ import { logger } from "@/lib/log";
 import { fetchChangelog } from "@/lib/changelog";
 import { listWatchedContainers } from "@/lib/docker/discovery";
 import { getRemoteDigest } from "@/lib/docker/registry";
-import { pullAndRecreate } from "@/lib/docker/updater";
+import { pullAndRecreate, type PhaseReporter } from "@/lib/docker/updater";
+import { enqueueJob, setQueueRunner } from "@/lib/queue";
 import {
   isSkipped,
   loadState,
   markSkipped,
   mutateState,
-  recordEvent,
 } from "@/lib/state";
 import type {
   DashboardState,
+  Job,
   PendingUpdate,
   WatchedContainer,
 } from "@/lib/types";
@@ -89,34 +90,62 @@ export async function scan(): Promise<ScanResult> {
   return { watched, pending };
 }
 
-export async function apply(name: string): Promise<void> {
+export async function apply(name: string, onPhase?: PhaseReporter): Promise<void> {
   const watched = await listWatchedContainers();
   const target = watched.find((c) => c.name === name);
   if (!target) throw new Error(`not in watch list: ${name}`);
 
   try {
-    const result = await pullAndRecreate(name);
+    const result = await pullAndRecreate(name, onPhase);
     const refreshed = await refreshOne(name);
-    await recordEvent({
-      timestamp: new Date().toISOString(),
-      type: "updated",
-      container: name,
-      fromVersion: target.currentVersion,
-      toVersion: refreshed?.currentVersion ?? target.currentVersion,
+    const now = new Date().toISOString();
+    const toVersion = refreshed?.currentVersion ?? target.currentVersion;
+    // Single mutateState so the activity event and lastUpdated record are
+    // persisted atomically — avoids any window where one lands without the other.
+    await mutateState((s) => {
+      s.activityLog.unshift({
+        timestamp: now,
+        type: "updated",
+        container: name,
+        fromVersion: target.currentVersion,
+        toVersion,
+      });
+      s.lastUpdated[name] = {
+        timestamp: now,
+        fromVersion: target.currentVersion,
+        toVersion,
+      };
     });
     invalidateDashboardCache();
     logger.info({ result }, "orchestrator: applied");
   } catch (err) {
-    await recordEvent({
-      timestamp: new Date().toISOString(),
-      type: "failed",
-      container: name,
-      fromVersion: target.currentVersion,
-      error: err instanceof Error ? err.message : String(err),
+    const now = new Date().toISOString();
+    await mutateState((s) => {
+      s.activityLog.unshift({
+        timestamp: now,
+        type: "failed",
+        container: name,
+        fromVersion: target.currentVersion,
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
     invalidateDashboardCache();
     throw err;
   }
+}
+
+let runnerRegistered = false;
+function ensureRunner(): void {
+  if (runnerRegistered) return;
+  runnerRegistered = true;
+  setQueueRunner(async (job, onPhase) => {
+    await apply(job.container, onPhase);
+  });
+}
+
+export function enqueueApply(name: string): Job {
+  ensureRunner();
+  return enqueueJob(name);
 }
 
 export async function skip(name: string, version: string): Promise<void> {
@@ -144,8 +173,19 @@ export async function buildDashboardState(options?: { fresh?: boolean }): Promis
       : await scanAndCache();
   const state = await loadState();
 
+  const watched = scanResult.watched.map((c) => {
+    const rec = state.lastUpdated[c.name];
+    if (!rec) return c;
+    return {
+      ...c,
+      lastUpdatedAt: rec.timestamp,
+      lastUpdatedFrom: rec.fromVersion,
+      lastUpdatedTo: rec.toVersion,
+    };
+  });
+
   return {
-    watched: scanResult.watched,
+    watched,
     pending: scanResult.pending,
     lastCheckAt: state.lastCheckAt,
     nextCheckAt: computeNextCheck(config.HM_SCHEDULE),
