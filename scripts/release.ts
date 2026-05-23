@@ -23,6 +23,17 @@ function bumpVersion(current: string, kind: Bump): string {
   return `${maj}.${min}.${pat + 1}`;
 }
 
+function repoWebUrl(): string | null {
+  try {
+    const url = sh("git remote get-url origin");
+    const m = url.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+    if (!m) return null;
+    return `https://github.com/${m[1]}/${m[2]}`;
+  } catch {
+    return null;
+  }
+}
+
 function lastTag(): string | null {
   try {
     return sh("git describe --tags --abbrev=0 --match 'v*'");
@@ -148,6 +159,11 @@ async function main() {
     if (await confirm(rl, "Push to origin now?")) {
       sh("git push --follow-tags");
       console.log(`✓ pushed main + ${tag} — release workflow will build the image`);
+      const repo = repoWebUrl();
+      if (repo) {
+        console.log(`\n  watch it run:  ${repo}/actions/workflows/release.yaml`);
+        console.log(`  this tag:      ${repo}/actions?query=event%3Apush+branch%3A${tag}`);
+      }
     } else {
       console.log(`\nleft local. push when ready:  git push --follow-tags`);
     }
